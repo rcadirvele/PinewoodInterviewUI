@@ -1,0 +1,146 @@
+﻿@page "/"
+@inject MudBlazor.ISnackbar snackBar
+@inject HttpClient _http
+
+<MudCard Elevation="25" Style="padding-left:5%" Class="align-left">
+    <MudCardHeader>
+        <CardHeaderContent>
+            <MudText Typo="Typo.h6" Color="Color.Primary">Add / Edit Customers</MudText>
+        </CardHeaderContent>
+    </MudCardHeader>
+    <MudForm Model="customer" Validation="customerInfoVmValidator.ValidateValue">
+        <MudCardContent Style="margin-right: 10%; margin-top:-2%">
+            <MudTextField @bind-Value="customer.FirstName" For="@(()=>customer.FirstName)" Immediate="true" Label="First Name" Variant="Variant.Text" Margin="Margin.Normal"></MudTextField>
+            <MudTextField @bind-Value="customer.LastName" For="@(()=>customer.LastName)" Validation="@customerInfoVmValidator.ValidateValue" Immediate="true" Label="Last Name" Variant="Variant.Text" Margin="Margin.Normal"></MudTextField>
+            <MudTextField @bind-Value="customer.Phone" For="@(()=>customer.Phone)" Validation="@customerInfoVmValidator.ValidateValue" Immediate="true" Label="Phone Number" Variant="Variant.Text" Margin="Margin.Normal"></MudTextField>
+            <MudTextField @bind-Value="customer.Email" For="@(()=>customer.Email)" Validation="@customerInfoVmValidator.ValidateValue" Immediate="true" Label="Email" Variant="Variant.Text" Margin="Margin.Normal"></MudTextField>
+            <MudTextField @bind-Value="customer.Postcode" For="@(()=>customer.Postcode)" Validation="@customerInfoVmValidator.ValidateValue" Immediate="true" Label="Postocode" Variant="Variant.Text" Margin="Margin.Normal"></MudTextField>
+
+            <br />
+            <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="SaveCustomer">Save Customer</MudButton>
+        </MudCardContent>
+    </MudForm>
+</MudCard>
+<br />
+<MudTable Elevation="25" Items="@customers" Filter="new Func<CustomerInfoVm, bool>(Search)" @bind-customer="customer" Style="padding-left:5%">
+    <ToolBarContent>
+        <MudText Typo="Typo.h6" Color="Color.Primary">Customers</MudText>
+        <MudTextField @bind-Value="searchString" Placeholder="Search for Customers..." Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" Style="margin-left:1%"></MudTextField>
+    </ToolBarContent>
+    <HeaderContent>
+        <MudTh>Cutomer Id</MudTh>
+        <MudTh>First Name</MudTh>
+        <MudTh>Last Name</MudTh>
+        <MudTh>Phone Number</MudTh>
+        <MudTh>Email</MudTh>
+        <MudTh>Postcode</MudTh>
+        <MudTh>Actions</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Id">@context.Id</MudTd>
+        <MudTd DataLabel="FirstName">@context.FirstName</MudTd>
+        <MudTd DataLabel="LastName">@context.LastName</MudTd>
+        <MudTd DataLabel="PhoneNumber">@context.Phone</MudTd>
+        <MudTd DataLabel="Email">@context.Email</MudTd>
+        <MudTd DataLabel="Postcode">@context.Postcode</MudTd>
+
+        <MudTd DataLabel="">
+            <MudFab @onclick="@(()=>Edit(@context.Id))" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Edit" Size="Size.Small" IconSize="Size.Small" />
+            <MudFab @onclick="@(()=>Delete(@context.Id))" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.Delete" Size="Size.Small" IconSize="Size.Small" />
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+@code {
+
+    private CustomerInfoVm customer = new();
+
+    private CustomerInfoVmValidator customerInfoVmValidator = new();
+
+    private static bool isEdit = false;
+
+    //private List<CustomerInfoVm> customers = new();
+    private IEnumerable<CustomerInfoVm> customers = new List<CustomerInfoVm>();
+
+    private string searchString = "";
+    protected override async Task OnInitializedAsync()
+    {
+        await GetAllCutomerInfo();
+    }
+
+    private async Task GetAllCutomerInfo()
+    {
+        customers = await _http.GetFromJsonAsync<List<CustomerInfoVm>>("api/v1/CustomerInfo/GetAllCustomers");
+
+    }
+
+    private bool Search(CustomerInfoVm customer)
+    {
+        if (string.IsNullOrWhiteSpace(searchString)) return true;
+        if (Convert.ToString(customer.Id).Contains(searchString, StringComparison.InvariantCultureIgnoreCase)
+            || customer.FirstName.Contains(searchString, StringComparison.OrdinalIgnoreCase)
+            || customer.LastName.Contains(searchString, StringComparison.OrdinalIgnoreCase)
+            || customer.Phone.Contains(searchString, StringComparison.OrdinalIgnoreCase)
+            || customer.Email.Contains(searchString, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+        return false;
+    }
+
+    private async Task SaveCustomer()
+    {
+
+        try
+        {
+            if (isEdit)
+            {
+                await _http.PutAsJsonAsync<CustomerInfoVm>("api/v1/CustomerInfo/UpdateCustomer", customer);
+                isEdit = false;
+            }
+            else
+            {
+                var isDup = customers.Where(x => x.Email == customer.Email).ToArray().Count() is > 0;
+                if (isDup)
+                {
+                    snackBar.Add("Customer Already Exist - Duplicate Email Id!", MudBlazor.Severity.Warning);
+                    return;
+
+                }
+                customer.Id = Guid.NewGuid();
+                await _http.PostAsJsonAsync<CustomerInfoVm>("api/v1/CustomerInfo/AddNewCustomer", customer);
+            }
+        }
+        catch
+        {
+            snackBar.Add("Customer Not Saved.", MudBlazor.Severity.Error);
+            await GetAllCutomerInfo();
+            return;
+
+        }
+        snackBar.Add("Customer Saved.", MudBlazor.Severity.Success);
+        await GetAllCutomerInfo();
+    }
+
+    private void Edit(Guid id)
+    {
+        customer = customers.FirstOrDefault(c => c.Id == id);
+        isEdit = true;
+    }
+
+    private async Task Delete(Guid id)
+    {
+        try
+        {
+            await _http.DeleteFromJsonAsync<Guid>($"api/v1/CustomerInfo/DeleteCustomer?custId={id}");
+            snackBar.Add("Customer Deleted.", MudBlazor.Severity.Success);
+        }
+        catch
+        {
+            snackBar.Add("Customer Not Deleted.", MudBlazor.Severity.Error);
+        }
+        await GetAllCutomerInfo();
+    }   
+
+}
+
